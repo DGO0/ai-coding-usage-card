@@ -3,8 +3,8 @@
 // Aggregates every AI coding CLI that ccusage detects (Claude Code, Codex,
 // Gemini CLI, Copilot CLI, ...) + live FX rates, renders SVG cards, and
 // commits them to your profile repo in a single git-tree commit.
-// Variants: full (846x225) / half (423x195, ALL-TIME+COST) /
-//           half-grass (423x335) / grass (423x195).
+// Variants: full (846x225) / half (423x195, ALL-TIME+COST) / half-grass (423x335) /
+//           grass (423x195) / combo (846x195, half+grass merged).
 // Requirements: Node 18+, GitHub CLI (`gh auth login`), npx.
 // https://github.com/DGO0/ai-coding-usage-card
 import { execSync } from 'node:child_process';
@@ -199,6 +199,17 @@ const buildGrass = () => {
 <g class="fade" style="animation-delay:200ms">${grass(26, 30, 58, true, 168)}</g>`);
 };
 
+// ─── variant: COMBO (846x195 — half + grass merged in one SVG) ───
+const buildCombo = () => {
+  const W = 846, H = 195;
+  return frame(W, H, `${header(W, 34)}
+<line x1="200" y1="60" x2="200" y2="175" stroke="#262626" stroke-width="1"/>
+<line x1="420" y1="60" x2="420" y2="175" stroke="#262626" stroke-width="1"/>
+<g class="fade" style="animation-delay:150ms">${allTimeBlock(30, 74, 140)}</g>
+<g class="fade" style="animation-delay:300ms"><text x="222" y="74" class="hdr">COST</text>${costRows(222, 98, 25, 393)}</g>
+<g class="fade" style="animation-delay:500ms"><text x="440" y="74" class="hdr">GRASS &#183; LAST 26 WEEKS</text>${grass(26, 440, 84, false)}</g>`);
+};
+
 // --- single-commit push via git tree API ---
 const token = sh(`"${GH}" auth token`).trim();
 const api = (url, opts = {}) =>
@@ -218,6 +229,7 @@ const files = [
   [`${DIR}/ai-usage-half.svg`, buildHalf()],
   [`${DIR}/ai-usage-half-grass.svg`, buildHalfGrass()],
   [`${DIR}/ai-usage-grass.svg`, buildGrass()],
+  [`${DIR}/ai-usage-combo.svg`, buildCombo()],
 ];
 
 const ref = await j(await api(`repos/${REPO}/git/ref/heads/main`));

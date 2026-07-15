@@ -10,6 +10,10 @@ No external services. No accounts. No API keys. Everything runs on your machine 
 
 <img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-full.svg" alt="full variant" />
 
+`ai-usage-combo.svg` (846×195) — half + grass merged in one SVG
+
+<img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-combo.svg" alt="combo variant" />
+
 `ai-usage-half.svg` (423×195) &nbsp;·&nbsp; `ai-usage-grass.svg` (423×195) — side by side = one full width
 
 <p align="left">
@@ -31,6 +35,7 @@ One run generates all four — embed whichever you like:
 | `ai-usage-half.svg` | 423×195 | ALL-TIME + COST only — two halves side by side = one full width |
 | `ai-usage-grass.svg` | 423×195 | 26-week usage grass only — pairs with the half card (GitHub 잔디 for AI usage) |
 | `ai-usage-half-grass.svg` | 423×335 | Half card + 26-week usage grass stacked |
+| `ai-usage-combo.svg` | 846×195 | Half + grass merged side by side in a single SVG |
 
 ## What it shows
 
