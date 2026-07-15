@@ -8,22 +8,22 @@ No external services. No accounts. No API keys. Everything runs on your machine 
 
 `ai-usage-full.svg` (846×225)
 
-<img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-full.svg" alt="full variant" />
+<img width="100%" src="https://raw.githubusercontent.com/Baek-Seunghyun/Baek-Seunghyun/main/cards/ai-usage-full.svg" alt="full variant" />
 
 `ai-usage-combo.svg` (846×195) — half + grass merged in one SVG
 
-<img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-combo.svg" alt="combo variant" />
+<img width="100%" src="https://raw.githubusercontent.com/Baek-Seunghyun/Baek-Seunghyun/main/cards/ai-usage-combo.svg" alt="combo variant" />
 
 `ai-usage-half.svg` (423×195) &nbsp;·&nbsp; `ai-usage-grass.svg` (423×195) — side by side = one full width
 
 <p align="left">
-<img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half.svg" alt="half variant" />
-<img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-grass.svg" alt="grass variant" />
+<img width="49%" align="top" src="https://raw.githubusercontent.com/Baek-Seunghyun/Baek-Seunghyun/main/cards/ai-usage-half.svg" alt="half variant" />
+<img width="49%" align="top" src="https://raw.githubusercontent.com/Baek-Seunghyun/Baek-Seunghyun/main/cards/ai-usage-grass.svg" alt="grass variant" />
 </p>
 
 `ai-usage-half-grass.svg` (423×335)
 
-<img width="49%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half-grass.svg" alt="half-grass variant" />
+<img width="49%" src="https://raw.githubusercontent.com/Baek-Seunghyun/Baek-Seunghyun/main/cards/ai-usage-half-grass.svg" alt="half-grass variant" />
 
 ## Variants
 
@@ -67,7 +67,7 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
 1. **Get the script**
 
    ```bash
-   curl -O https://raw.githubusercontent.com/DGO0/ai-coding-usage-card/main/usage-card.mjs
+   curl -O https://raw.githubusercontent.com/Baek-Seunghyun/ai-coding-usage-card/main/usage-card.mjs
    ```
 
 2. **Edit the CONFIG block** at the top: set `repo` to `yourname/yourname`, pick your currencies. On Windows, absolute paths for `npx`/`gh` are recommended (scheduled tasks have a minimal PATH).
