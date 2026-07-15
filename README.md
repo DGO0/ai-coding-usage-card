@@ -4,10 +4,22 @@ A self-hosted GitHub profile card that shows how many tokens (and how much API-e
 
 No external services. No accounts. No API keys. Everything runs on your machine against your own local logs, and the card is just an SVG committed to your profile repo.
 
-**Live examples:**
+**Live examples** — all four variants, auto-updating daily from my own usage:
+
+`ai-usage-full.svg` (846×280)
 
 <img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-full.svg" alt="full variant" />
+
+`ai-usage-grass.svg` (846×190)
+
 <img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-grass.svg" alt="grass variant" />
+
+`ai-usage-half.svg` (495×195) &nbsp;·&nbsp; `ai-usage-half-grass.svg` (495×335)
+
+<p align="left">
+<img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half.svg" alt="half variant" />
+<img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half-grass.svg" alt="half-grass variant" />
+</p>
 
 ## Variants
 
