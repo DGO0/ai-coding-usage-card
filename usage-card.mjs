@@ -3,8 +3,8 @@
 // Aggregates every AI coding CLI that ccusage detects (Claude Code, Codex,
 // Gemini CLI, Copilot CLI, ...) + live FX rates, renders SVG cards, and
 // commits them to your profile repo in a single git-tree commit.
-// Variants: full (846x280) / half (423x195, ALL-TIME+COST) /
-//           half-grass (423x335) / grass (846x190).
+// Variants: full (846x225) / half (423x195, ALL-TIME+COST) /
+//           half-grass (423x335) / grass (423x195).
 // Requirements: Node 18+, GitHub CLI (`gh auth login`), npx.
 // https://github.com/DGO0/ai-coding-usage-card
 import { execSync } from 'node:child_process';
@@ -93,7 +93,7 @@ const maxDay = Math.max(...daily.map((d) => d.totalCost), 1);
 // --- shared pieces ---
 const STYLE = `<style>
 .t{font:600 18px 'Segoe UI',Ubuntu,sans-serif;fill:${A}}
-.user{font:600 14px 'Segoe UI',Ubuntu,sans-serif;fill:${A}}
+.user{font:600 14px 'Segoe UI',Ubuntu,sans-serif;fill:#9e9e9e}
 .hdr{font:600 11px 'Segoe UI',Ubuntu,sans-serif;fill:#6b6b6b;letter-spacing:1.5px}
 .big{font:800 44px 'Segoe UI',Ubuntu,sans-serif;fill:${A}}
 .sub{font:400 13px 'Segoe UI',Ubuntu,sans-serif;fill:#9e9e9e}
@@ -153,9 +153,9 @@ const grass = (weeks, x0, y0, withLegend = true, legendY = null) => {
   return cells;
 };
 
-// ─── variant: FULL (846x280) ───
+// ─── variant: FULL (846x225) ───
 const buildFull = () => {
-  const W = 846, H = 280;
+  const W = 846, H = 225;
   const cols = [30, 235, 465, 665], dividers = [215, 445, 645];
   const col3 = [['Output', fmtTok(totals.outputTokens)], ['Input', fmtTok(totals.inputTokens)], ['Cache read', fmtTok(totals.cacheReadTokens)], ['Cache write', fmtTok(totals.cacheCreationTokens)]]
     .map(([l, v], i) => row(cols[2], 98 + i * 25, l, v, 630)).join('');
@@ -164,23 +164,13 @@ const buildFull = () => {
   const toolLine = tools
     .map(([n, c]) => `<tspan class="lbl">${n}</tspan> <tspan class="val">$ ${fmtCost(c)}</tspan><tspan class="foot"> (${pct(c)})</tspan>`)
     .join('<tspan class="foot">&#160;&#160;&#183;&#160;&#160;</tspan>');
-  const last = daily.slice(-30);
-  const maxCost = Math.max(...last.map((d) => d.totalCost), 1);
-  const slotW = (W - 60) / 30, barW = Math.floor(slotW - 6), baseY = 266;
-  const bars = last
-    .map((d, i) => {
-      const h = Math.max(2, Math.round((d.totalCost / maxCost) * 40));
-      return `<rect x="${(30 + i * slotW).toFixed(1)}" y="${baseY - h}" width="${barW}" height="${h}" rx="2" fill="${A}" opacity="${d === peak ? 1 : 0.45}"/>`;
-    })
-    .join('');
   return frame(W, H, `${header(W)}
 ${dividers.map((x) => `<line x1="${x}" y1="62" x2="${x}" y2="178" stroke="#262626" stroke-width="1"/>`).join('')}
 <g class="fade" style="animation-delay:150ms">${allTimeBlock(cols[0], 72, 135)}</g>
 <g class="fade" style="animation-delay:300ms"><text x="${cols[1]}" y="72" class="hdr">COST</text>${costRows(cols[1], 98, 25, 430)}</g>
 <g class="fade" style="animation-delay:450ms"><text x="${cols[2]}" y="72" class="hdr">TOKEN MIX</text>${col3}</g>
 <g class="fade" style="animation-delay:600ms"><text x="${cols[3]}" y="72" class="hdr">ACTIVITY</text>${col4}</g>
-<g class="fade" style="animation-delay:750ms"><text x="30" y="205" class="hdr">BY TOOL</text><text x="110" y="205">${toolLine}</text></g>
-<g class="fade" style="animation-delay:900ms">${bars}</g>`);
+<g class="fade" style="animation-delay:750ms"><text x="30" y="205" class="hdr">BY TOOL</text><text x="110" y="205">${toolLine}</text></g>`);
 };
 
 // ─── variant: HALF (423x195 — two side by side = one full width) ───
@@ -202,11 +192,11 @@ const buildHalfGrass = () => {
 <g class="fade" style="animation-delay:500ms"><text x="30" y="200" class="hdr">GRASS &#183; LAST 26 WEEKS</text>${grass(26, 30, 212, true, 316)}</g>`);
 };
 
-// ─── variant: GRASS only (846x190) ───
+// ─── variant: GRASS only (423x195 — pairs with the half card) ───
 const buildGrass = () => {
-  const W = 846, H = 190;
+  const W = 423, H = 195;
   return frame(W, H, `${header(W, 34)}
-<g class="fade" style="animation-delay:200ms">${grass(52, 30, 64, true, 166)}</g>`);
+<g class="fade" style="animation-delay:200ms">${grass(26, 30, 58, true, 168)}</g>`);
 };
 
 // --- single-commit push via git tree API ---

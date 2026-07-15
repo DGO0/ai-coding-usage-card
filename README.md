@@ -6,20 +6,20 @@ No external services. No accounts. No API keys. Everything runs on your machine 
 
 **Live examples** — all four variants, auto-updating daily from my own usage:
 
-`ai-usage-full.svg` (846×280)
+`ai-usage-full.svg` (846×225)
 
 <img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-full.svg" alt="full variant" />
 
-`ai-usage-grass.svg` (846×190)
-
-<img width="100%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-grass.svg" alt="grass variant" />
-
-`ai-usage-half.svg` (423×195) &nbsp;·&nbsp; `ai-usage-half-grass.svg` (423×335)
+`ai-usage-half.svg` (423×195) &nbsp;·&nbsp; `ai-usage-grass.svg` (423×195) — side by side = one full width
 
 <p align="left">
 <img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half.svg" alt="half variant" />
-<img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half-grass.svg" alt="half-grass variant" />
+<img width="49%" align="top" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-grass.svg" alt="grass variant" />
 </p>
+
+`ai-usage-half-grass.svg` (423×335)
+
+<img width="49%" src="https://raw.githubusercontent.com/DGO0/DGO0/main/cards/ai-usage-half-grass.svg" alt="half-grass variant" />
 
 ## Variants
 
@@ -27,10 +27,10 @@ One run generates all four — embed whichever you like:
 
 | File | Size | Content |
 |---|---|---|
-| `ai-usage-full.svg` | 846×280 | Everything: totals, 4-currency cost, token mix, activity, per-tool split, 30-day chart |
-| `ai-usage-half.svg` | 423×195 | ALL-TIME + COST only — pairs nicely with github-readme-stats cards |
-| `ai-usage-half-grass.svg` | 423×335 | Half card + 26-week contribution-style usage grass |
-| `ai-usage-grass.svg` | 846×190 | 52-week usage grass only (GitHub 잔디 for AI usage) |
+| `ai-usage-full.svg` | 846×225 | Everything: totals, 4-currency cost, token mix, activity, per-tool split |
+| `ai-usage-half.svg` | 423×195 | ALL-TIME + COST only — two halves side by side = one full width |
+| `ai-usage-grass.svg` | 423×195 | 26-week usage grass only — pairs with the half card (GitHub 잔디 for AI usage) |
+| `ai-usage-half-grass.svg` | 423×335 | Half card + 26-week usage grass stacked |
 
 ## What it shows
 
