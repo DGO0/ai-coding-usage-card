@@ -77,7 +77,7 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
 
    ```bash
    USAGE_CARD_REPO=YOURNAME/YOURNAME USAGE_CARD_DEVICE=macbook-work node usage-card.mjs
-   # [2026-07-15T...] card updated: 12.6B tokens | $13,190 | Claude Code $13,190 | Codex $0.04
+   # [2026-07-16T...] 1 device(s), 5 cards updated @ ab12cd3: 12.6B tokens | $13,190 | Claude Code $13,190 | Codex $0.04
    ```
 
 4. **Embed in your profile README** (any of the four variants)
