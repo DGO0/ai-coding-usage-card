@@ -6,13 +6,16 @@
 // Variants: full (846x225) / half (423x195, ALL-TIME+COST) / half-grass (423x335) /
 //           grass (423x195) / combo (846x195, half+grass merged).
 // Requirements: Node 18+, GitHub CLI (`gh auth login`), npx.
-// https://github.com/DGO0/ai-coding-usage-card
+// https://github.com/Baek-Seunghyun/ai-coding-usage-card
 import { execSync } from 'node:child_process';
+import assert from 'node:assert/strict';
 
 // ─────────────────────────── CONFIG ───────────────────────────
 const CONFIG = {
   // Your profile repo — the public repo named after your username.
-  repo: process.env.USAGE_CARD_REPO ?? 'YOURNAME/YOURNAME',
+  repo: process.env.USAGE_CARD_REPO,
+  // Stable, unique name for this computer. Required for multi-device totals.
+  device: process.env.USAGE_CARD_DEVICE,
   // Directory inside that repo where the SVGs are committed.
   dir: 'cards',
   // Extra currencies next to USD (any codes from open.er-api.com).
@@ -28,18 +31,37 @@ const CONFIG = {
 // ──────────────────────────────────────────────────────────────
 
 const REPO = CONFIG.repo;
-const USER = '@' + REPO.split('/')[0];
 const DIR = CONFIG.dir;
 const NPX = CONFIG.npx;
 const GH = CONFIG.gh;
 const A = CONFIG.accent;
+const DEVICE = CONFIG.device;
 const GRASS_RAMP = ['#1b1b1b', '#0e4429', '#006d32', '#26a641', '#39d353'];
 
 const sh = (cmd, big = false) =>
   execSync(cmd, { encoding: 'utf8', maxBuffer: (big ? 128 : 32) * 1024 * 1024, windowsHide: true });
 
+if (!REPO || !/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(REPO))
+  throw new Error('Set USAGE_CARD_REPO to your profile repository, e.g. octocat/octocat');
+if (!DEVICE || !/^[a-z0-9][a-z0-9_-]*$/i.test(DEVICE))
+  throw new Error('Set USAGE_CARD_DEVICE to a stable unique name, e.g. macbook-work');
+const USER = '@' + REPO.split('/')[0];
+
+const token = sh(`"${GH}" auth token`).trim();
+const api = (url, opts = {}) =>
+  fetch(`https://api.github.com/${url}`, {
+    ...opts,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+      ...opts.headers,
+    },
+  });
+const j = async (r) => { if (!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); };
+
 // --- usage data (combined across all detected agent CLIs) ---
-const { totals, daily } = JSON.parse(sh(`"${NPX}" -y ccusage@latest --json`, true));
+const local = JSON.parse(sh(`"${NPX}" -y ccusage@latest --json`, true));
 
 const toolCost = (cmd) => {
   try {
@@ -49,7 +71,38 @@ const toolCost = (cmd) => {
 };
 const others = [['Codex', toolCost('codex')], ['Gemini', toolCost('gemini')], ['Copilot', toolCost('copilot')]]
   .filter(([, c]) => c > 0);
-const tools = [['Claude Code', totals.totalCost - others.reduce((s, [, c]) => s + c, 0)], ...others];
+const localTools = [['Claude Code', local.totals.totalCost - others.reduce((s, [, c]) => s + c, 0)], ...others];
+const snapshot = { version: 1, device: DEVICE, updatedAt: new Date().toISOString(), ...local, tools: localTools };
+
+const ref = await j(await api(`repos/${REPO}/git/ref/heads/main`));
+const baseCommit = await j(await api(`repos/${REPO}/git/commits/${ref.object.sha}`));
+const repoTree = await j(await api(`repos/${REPO}/git/trees/${baseCommit.tree.sha}?recursive=1`));
+const entries = repoTree.tree.filter((x) => x.type === 'blob' && /^cards\/devices\/[a-z0-9_-]+\.json$/i.test(x.path));
+const snapshots = await Promise.all(entries.map(async ({ sha }) => {
+  const blob = await j(await api(`repos/${REPO}/git/blobs/${sha}`));
+  return JSON.parse(Buffer.from(blob.content, 'base64').toString('utf8'));
+}));
+const current = snapshots.findIndex((x) => x.device === DEVICE);
+if (current < 0) snapshots.push(snapshot); else snapshots[current] = snapshot;
+
+const sum = (items, key) => items.reduce((n, x) => n + (x[key] || 0), 0);
+const totalKeys = ['totalTokens', 'inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalCost'];
+const totals = Object.fromEntries(totalKeys.map((key) => [key, sum(snapshots.map((x) => x.totals), key)]));
+const dailyMap = new Map();
+for (const item of snapshots) for (const day of item.daily) {
+  const merged = dailyMap.get(day.period) || { period: day.period, modelBreakdowns: [] };
+  for (const key of totalKeys) merged[key] = (merged[key] || 0) + (day[key] || 0);
+  for (const model of day.modelBreakdowns || []) {
+    let target = merged.modelBreakdowns.find((x) => x.modelName === model.modelName);
+    if (!target) merged.modelBreakdowns.push(target = { modelName: model.modelName });
+    for (const key of [...totalKeys, 'cost']) target[key] = (target[key] || 0) + (model[key] || 0);
+  }
+  dailyMap.set(day.period, merged);
+}
+const daily = [...dailyMap.values()].sort((a, b) => a.period.localeCompare(b.period));
+assert.equal(sum(daily, 'totalTokens'), totals.totalTokens, 'daily and all-time totals must match');
+const toolNames = [...new Set(snapshots.flatMap((x) => x.tools.map(([name]) => name)))];
+const tools = toolNames.map((name) => [name, snapshots.reduce((total, x) => total + (x.tools.find(([n]) => n === name)?.[1] || 0), 0)]);
 
 // --- FX ---
 const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
@@ -210,21 +263,8 @@ const buildCombo = () => {
 <g class="fade" style="animation-delay:500ms"><text x="440" y="74" class="hdr">GRASS &#183; LAST 26 WEEKS</text>${grass(26, 440, 84, false)}</g>`);
 };
 
-// --- single-commit push via git tree API ---
-const token = sh(`"${GH}" auth token`).trim();
-const api = (url, opts = {}) =>
-  fetch(`https://api.github.com/${url}`, {
-    ...opts,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      ...opts.headers,
-    },
-  });
-const j = async (r) => { if (!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); };
-
 const files = [
+  [`${DIR}/devices/${DEVICE}.json`, JSON.stringify(snapshot, null, 2) + '\n'],
   [`${DIR}/ai-usage-full.svg`, buildFull()],
   [`${DIR}/ai-usage-half.svg`, buildHalf()],
   [`${DIR}/ai-usage-half-grass.svg`, buildHalfGrass()],
@@ -232,8 +272,6 @@ const files = [
   [`${DIR}/ai-usage-combo.svg`, buildCombo()],
 ];
 
-const ref = await j(await api(`repos/${REPO}/git/ref/heads/main`));
-const baseCommit = await j(await api(`repos/${REPO}/git/commits/${ref.object.sha}`));
 const treeItems = files.map(([path, content]) => ({ path, mode: '100644', type: 'blob', content }));
 const tree = await j(await api(`repos/${REPO}/git/trees`, {
   method: 'POST',
@@ -249,4 +287,4 @@ const commit = await j(await api(`repos/${REPO}/git/commits`, {
 }));
 await j(await api(`repos/${REPO}/git/refs/heads/main`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha }) }));
 
-console.log(`[${new Date().toISOString()}] 4 cards updated @ ${commit.sha.slice(0, 7)}: ${fmtTok(totals.totalTokens)} tokens | $${int(usd)} | ${tools.map(([n, c]) => `${n} $${fmtCost(c)}`).join(' | ')}`);
+console.log(`[${new Date().toISOString()}] ${snapshots.length} device(s), 5 cards updated @ ${commit.sha.slice(0, 7)}: ${fmtTok(totals.totalTokens)} tokens | $${int(usd)} | ${tools.map(([n, c]) => `${n} $${fmtCost(c)}`).join(' | ')}`);

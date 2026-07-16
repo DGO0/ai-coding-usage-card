@@ -53,9 +53,9 @@ One run generates all four — embed whichever you like:
 ## How it works
 
 ```
-ccusage (local logs) ──► usage-card.mjs ──► SVG ──► GitHub contents API ──► your profile README
-        ▲                                                                        ▲
-   all detected CLIs                                              <img> pointing at the raw file
+ccusage (each device) ──► cards/devices/<device>.json ──► merged SVG ──► profile README
+        ▲                         ▲                                  ▲
+   local CLI logs          overwritten per run             all devices combined
 ```
 
 A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each run recomputes everything from your local logs, fetches fresh FX rates, and commits the regenerated SVG.
@@ -64,18 +64,19 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
 
 **Requirements:** Node 18+, [GitHub CLI](https://cli.github.com/) logged in (`gh auth login`, `repo` scope is enough), and a profile repo (the public repo named after your username).
 
-1. **Get the script**
+1. **Fork this repository, then clone your fork**
 
    ```bash
-   curl -O https://raw.githubusercontent.com/Baek-Seunghyun/ai-coding-usage-card/main/usage-card.mjs
+   git clone https://github.com/YOURNAME/ai-coding-usage-card.git
+   cd ai-coding-usage-card
    ```
 
-2. **Edit the CONFIG block** at the top: set `repo` to `yourname/yourname`, pick your currencies. On Windows, absolute paths for `npx`/`gh` are recommended (scheduled tasks have a minimal PATH).
+2. **Choose a permanent device ID.** Use a different ID on every computer and never rename it later.
 
 3. **Test run**
 
    ```bash
-   node usage-card.mjs
+   USAGE_CARD_REPO=YOURNAME/YOURNAME USAGE_CARD_DEVICE=macbook-work node usage-card.mjs
    # [2026-07-15T...] card updated: 12.6B tokens | $13,190 | Claude Code $13,190 | Codex $0.04
    ```
 
@@ -102,8 +103,16 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
    **macOS / Linux** — cron:
 
    ```cron
-   37 9 * * * /usr/local/bin/node /path/to/usage-card.mjs >> /path/to/usage-card.log 2>&1
+   37 9 * * * USAGE_CARD_REPO=YOURNAME/YOURNAME USAGE_CARD_DEVICE=macbook-work /usr/local/bin/node /path/to/usage-card.mjs >> /path/to/usage-card.log 2>&1
    ```
+
+## Multiple computers
+
+Repeat the clone, test, and scheduling steps on each computer with a unique `USAGE_CARD_DEVICE`, such as `macbook-work`, `macbook-home`, or `desktop-windows`. Each run replaces that device's snapshot instead of adding to it, then rebuilds the cards from every device snapshot, so scheduled reruns do not duplicate usage.
+
+Use a different schedule minute on each computer (for example 09:37, 09:42, 09:47) so two devices do not update the same Git branch simultaneously.
+
+Do not sync or copy Claude Code, Codex, or other AI CLI log directories between computers. `ccusage` exposes daily totals rather than cross-device session IDs, so copied logs cannot be deduplicated reliably.
 
 ## Customization
 
@@ -121,10 +130,12 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
 
 로컬에 쌓인 AI 코딩 CLI 로그(ccusage가 감지하는 모든 툴)를 매일 집계해서, 누적 토큰·4개 통화 비용·툴별 분해·30일 차트를 담은 SVG 카드를 프로필 레포에 커밋하는 스크립트입니다. 외부 서비스·계정·API 키 전부 불필요.
 
-1. `usage-card.mjs` 받기 → 상단 CONFIG에서 `repo`를 `본인아이디/본인아이디`로 수정
-2. `node usage-card.mjs` 한 번 실행해 테스트
+1. 이 저장소를 fork한 뒤 `git clone https://github.com/YOURNAME/ai-coding-usage-card.git` 로 자신의 fork를 복제
+2. 컴퓨터마다 겹치지 않는 고정 ID를 정하고 `USAGE_CARD_REPO=YOURNAME/YOURNAME USAGE_CARD_DEVICE=macbook-work node usage-card.mjs` 로 테스트
 3. 프로필 README에 `<img width="100%" src="https://raw.githubusercontent.com/아이디/아이디/main/cards/ai-usage-full.svg" />` 삽입 (4종 중 원하는 파일명으로)
-4. 작업 스케줄러(위 VBS 래퍼) 또는 cron으로 매일 실행 등록
+4. 같은 `USAGE_CARD_REPO`, `USAGE_CARD_DEVICE` 환경변수를 포함해 작업 스케줄러, launchd 또는 cron으로 매일 실행 등록
+
+각 컴퓨터는 자신의 누적 스냅샷만 덮어쓰므로 재실행으로 사용량이 중복되지 않고, 카드는 모든 컴퓨터의 최신 스냅샷을 합산합니다. AI CLI 로그 폴더 자체를 컴퓨터 사이에 복사하거나 동기화하면 동일 세션을 판별할 수 없으므로 지원하지 않습니다.
 
 전제 조건은 Node 18+, `gh auth login` 완료된 GitHub CLI뿐입니다.
 
