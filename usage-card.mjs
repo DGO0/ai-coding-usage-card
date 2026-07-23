@@ -3,11 +3,15 @@
 // Aggregates every AI coding CLI that ccusage detects (Claude Code, Codex,
 // Gemini CLI, Copilot CLI, ...) + live FX rates, renders SVG cards, and
 // commits them to your profile repo in a single git-tree commit.
+// Device snapshots are a retention-proof ledger: each day's numbers merge as a
+// high-water mark against the stored ledger, so pruned local logs never make
+// the ALL-TIME total shrink.
 // Variants: full (846x225) / half (423x195, ALL-TIME+COST) / half-grass (423x335) /
 //           grass (423x195) / combo (846x195, half+grass merged).
 // Requirements: Node 18+, GitHub CLI (`gh auth login`), npx.
 // https://github.com/Baek-Seunghyun/ai-coding-usage-card
 import { execSync } from 'node:child_process';
+import { mkdirSync, writeFileSync } from 'node:fs';
 
 // ─────────────────────────── CONFIG ───────────────────────────
 const CONFIG = {
@@ -36,6 +40,7 @@ const GH = CONFIG.gh;
 const A = CONFIG.accent;
 const DEVICE = CONFIG.device;
 const GRASS_RAMP = ['#1b1b1b', '#0e4429', '#006d32', '#26a641', '#39d353'];
+const DRY_RUN = process.argv.includes('--dry-run');
 
 const sh = (cmd, big = false) =>
   execSync(cmd, { encoding: 'utf8', maxBuffer: (big ? 128 : 32) * 1024 * 1024, windowsHide: true });
@@ -59,20 +64,23 @@ const api = (url, opts = {}) =>
   });
 const j = async (r) => { if (!r.ok) throw new Error(`${r.status} ${await r.text()}`); return r.json(); };
 
-// --- usage data (combined across all detected agent CLIs) ---
+// --- usage data (this device, from local ccusage logs) ---
 const local = JSON.parse(sh(`"${NPX}" -y ccusage@latest --json`, true));
 
-const toolCost = (cmd) => {
+const toolDailyOf = (cmd) => {
   try {
-    const t = JSON.parse(sh(`"${NPX}" -y ccusage@latest ${cmd} daily --json`)).totals || {};
-    return t.costUSD ?? t.totalCost ?? 0;
-  } catch { return 0; }
+    const d = JSON.parse(sh(`"${NPX}" -y ccusage@latest ${cmd} daily --json`));
+    const out = {};
+    for (const x of d.daily || []) {
+      const c = x.costUSD ?? x.totalCost ?? 0;
+      if (c > 0) out[x.period] = c;
+    }
+    return out;
+  } catch { return {}; }
 };
-const others = [['Codex', toolCost('codex')], ['Gemini', toolCost('gemini')], ['Copilot', toolCost('copilot')]]
-  .filter(([, c]) => c > 0);
-const localTools = [['Claude Code', local.totals.totalCost - others.reduce((s, [, c]) => s + c, 0)], ...others];
-const snapshot = { version: 1, device: DEVICE, updatedAt: new Date().toISOString(), ...local, tools: localTools };
+const newToolDaily = { Codex: toolDailyOf('codex'), Gemini: toolDailyOf('gemini'), Copilot: toolDailyOf('copilot') };
 
+// --- fetch existing device snapshots ---
 const ref = await j(await api(`repos/${REPO}/git/ref/heads/main`));
 const baseCommit = await j(await api(`repos/${REPO}/git/commits/${ref.object.sha}`));
 const repoTree = await j(await api(`repos/${REPO}/git/trees/${baseCommit.tree.sha}?recursive=1`));
@@ -81,12 +89,82 @@ const snapshots = await Promise.all(entries.map(async ({ sha }) => {
   const blob = await j(await api(`repos/${REPO}/git/blobs/${sha}`));
   return JSON.parse(Buffer.from(blob.content, 'base64').toString('utf8'));
 }));
+const old = snapshots.find((x) => x.device === DEVICE);
+
+// --- high-water merge: this device's stored ledger vs the fresh local read ---
+const sum = (items, key) => items.reduce((n, x) => n + (x[key] || 0), 0);
+const sumValues = (obj) => Object.values(obj).reduce((s, c) => s + c, 0);
+const totalKeys = ['totalTokens', 'inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalCost'];
+
+const mergeDaily = (oldDaily = [], newDaily = []) => {
+  const map = new Map(oldDaily.map((d) => [d.period, d]));
+  for (const day of newDaily) {
+    const prev = map.get(day.period);
+    const models = new Map((prev?.modelBreakdowns || []).map((m) => [m.modelName, m]));
+    for (const m of day.modelBreakdowns || []) {
+      const pm = models.get(m.modelName) || {};
+      models.set(m.modelName, {
+        modelName: m.modelName,
+        cost: Math.max(pm.cost || 0, m.cost || 0),
+        ...Object.fromEntries(totalKeys.map((k) => [k, Math.max(pm[k] || 0, m[k] || 0)])),
+      });
+    }
+    map.set(day.period, {
+      period: day.period,
+      ...Object.fromEntries(totalKeys.map((k) => [k, Math.max(prev?.[k] || 0, day[k] || 0)])),
+      modelBreakdowns: [...models.values()],
+    });
+  }
+  return [...map.values()].sort((a, b) => a.period.localeCompare(b.period));
+};
+
+const mergeToolDaily = (oldTD = {}, newTD = {}) => {
+  const names = new Set([...Object.keys(oldTD), ...Object.keys(newTD)]);
+  const merged = {};
+  for (const name of names) {
+    const o = oldTD[name] || {}, n = newTD[name] || {};
+    const periods = new Set([...Object.keys(o), ...Object.keys(n)]);
+    const days = {};
+    for (const p of periods) days[p] = Math.max(o[p] || 0, n[p] || 0);
+    merged[name] = days;
+  }
+  return merged;
+};
+
+// v1 -> v2 migration (one-time): fold the old cumulative per-tool total into a
+// fixed legacy bucket, since v1 snapshots have no day-level tool breakdown.
+const toolLegacy = old?.toolDaily
+  ? (old.toolLegacy || {})
+  : Object.fromEntries((old?.tools || [])
+      .filter(([name]) => name !== 'Claude Code')
+      .map(([name, cost]) => [name, Math.max(0, cost - sumValues(newToolDaily[name] || {}))]));
+
+const mergedDaily = mergeDaily(old?.daily, local.daily);
+const mergedToolDaily = mergeToolDaily(old?.toolDaily, newToolDaily);
+const snapTotals = Object.fromEntries(totalKeys.map((k) => [k, sum(mergedDaily, k)]));
+const snapshot = {
+  version: 2,
+  device: DEVICE,
+  updatedAt: new Date().toISOString(),
+  totals: snapTotals,
+  daily: mergedDaily,
+  toolDaily: mergedToolDaily,
+  toolLegacy,
+  ...(old?.baseline ? { baseline: old.baseline } : {}),
+};
+
 const current = snapshots.findIndex((x) => x.device === DEVICE);
 if (current < 0) snapshots.push(snapshot); else snapshots[current] = snapshot;
 
-const sum = (items, key) => items.reduce((n, x) => n + (x[key] || 0), 0);
-const totalKeys = ['totalTokens', 'inputTokens', 'outputTokens', 'cacheCreationTokens', 'cacheReadTokens', 'totalCost'];
-const totals = Object.fromEntries(totalKeys.map((key) => [key, sum(snapshots.map((x) => x.totals), key)]));
+// --- multi-device aggregation ---
+// dailyTotals: daily-derived sum only (what's actually broken down by day/model).
+// headlineTotals: dailyTotals + each device's manually-seeded baseline, used only
+// for the ALL-TIME/COST headline numbers and the commit message.
+const dailyTotals = Object.fromEntries(totalKeys.map((key) => [key, sum(snapshots.map((x) => x.totals), key)]));
+const baselineTokens = sum(snapshots.map((x) => x.baseline || {}), 'totalTokens');
+const baselineCost = sum(snapshots.map((x) => x.baseline || {}), 'totalCost');
+const headlineTotals = { ...dailyTotals, totalTokens: dailyTotals.totalTokens + baselineTokens, totalCost: dailyTotals.totalCost + baselineCost };
+
 const dailyMap = new Map();
 for (const item of snapshots) for (const day of item.daily) {
   const merged = dailyMap.get(day.period) || { period: day.period, modelBreakdowns: [] };
@@ -99,10 +177,19 @@ for (const item of snapshots) for (const day of item.daily) {
   dailyMap.set(day.period, merged);
 }
 const daily = [...dailyMap.values()].sort((a, b) => a.period.localeCompare(b.period));
-if (sum(daily, 'totalTokens') !== totals.totalTokens)
+if (sum(daily, 'totalTokens') + baselineTokens !== headlineTotals.totalTokens)
   console.warn('warning: merged daily totals do not match the all-time total — check device snapshots');
-const toolNames = [...new Set(snapshots.flatMap((x) => x.tools.map(([name]) => name)))];
-const tools = toolNames.map((name) => [name, snapshots.reduce((total, x) => total + (x.tools.find(([n]) => n === name)?.[1] || 0), 0)]);
+
+const deviceToolTotal = (snap, name) =>
+  snap.toolDaily
+    ? sumValues(snap.toolDaily[name] || {}) + (snap.toolLegacy?.[name] || 0)
+    : snap.tools?.find(([n]) => n === name)?.[1] || 0;
+const otherNames = [...new Set(snapshots.flatMap((x) =>
+  [...Object.keys(x.toolDaily || {}), ...(x.tools || []).map(([n]) => n).filter((n) => n !== 'Claude Code')]))];
+const others = otherNames
+  .map((name) => [name, snapshots.reduce((t, s) => t + deviceToolTotal(s, name), 0)])
+  .filter(([, c]) => c > 0);
+const tools = [['Claude Code', headlineTotals.totalCost - others.reduce((s, [, c]) => s + c, 0)], ...others];
 
 // --- FX ---
 const fxRes = await fetch('https://open.er-api.com/v6/latest/USD');
@@ -110,7 +197,7 @@ if (!fxRes.ok) throw new Error(`FX API failed: ${fxRes.status}`);
 const fx = (await fxRes.json()).rates;
 
 // --- derived ---
-const usd = totals.totalCost;
+const usd = headlineTotals.totalCost;
 const fmtTok = (n) =>
   n >= 1e12 ? (n / 1e12).toFixed(1) + 'T'
   : n >= 1e9 ? (n / 1e9).toFixed(1) + 'B'
@@ -123,9 +210,9 @@ const fmtCost = (c) => (c >= 100 ? int(c) : c.toFixed(2));
 const pct = (c) => { const p = (c / usd) * 100; return p >= 1 ? `${p.toFixed(0)}%` : '&lt;1%'; };
 
 const daysActive = daily.length;
-const avgDay = usd / Math.max(daysActive, 1);
+const avgDay = dailyTotals.totalCost / Math.max(daysActive, 1);
 const peak = daily.reduce((a, d) => (d.totalCost > a.totalCost ? d : a), daily[0]);
-const cacheShare = ((totals.cacheReadTokens / totals.totalTokens) * 100).toFixed(1);
+const cacheShare = ((dailyTotals.cacheReadTokens / dailyTotals.totalTokens) * 100).toFixed(1);
 
 const modelCost = {};
 for (const d of daily)
@@ -172,7 +259,7 @@ const row = (x, y, label, value, wEnd) =>
   `<text x="${x}" y="${y}" class="lbl">${label}</text><text x="${wEnd}" y="${y}" text-anchor="end" class="val">${value}</text>`;
 
 const allTimeBlock = (x, yHdr, yBig) => `<text x="${x}" y="${yHdr}" class="hdr">ALL-TIME</text>
-<text x="${x}" y="${yBig}" class="big">${fmtTok(totals.totalTokens)}</text>
+<text x="${x}" y="${yBig}" class="big">${fmtTok(headlineTotals.totalTokens)}</text>
 <text x="${x}" y="${yBig + 25}" class="sub">tokens &#183; ${cacheShare}% cache-hit</text>`;
 
 const costRows = (x, y0, step, wEnd) =>
@@ -210,7 +297,7 @@ const grass = (weeks, x0, y0, withLegend = true, legendY = null) => {
 const buildFull = () => {
   const W = 846, H = 225;
   const cols = [30, 235, 465, 665], dividers = [215, 445, 645];
-  const col3 = [['Output', fmtTok(totals.outputTokens)], ['Input', fmtTok(totals.inputTokens)], ['Cache read', fmtTok(totals.cacheReadTokens)], ['Cache write', fmtTok(totals.cacheCreationTokens)]]
+  const col3 = [['Output', fmtTok(dailyTotals.outputTokens)], ['Input', fmtTok(dailyTotals.inputTokens)], ['Cache read', fmtTok(dailyTotals.cacheReadTokens)], ['Cache write', fmtTok(dailyTotals.cacheCreationTokens)]]
     .map(([l, v], i) => row(cols[2], 98 + i * 25, l, v, 630)).join('');
   const col4 = [['Active days', String(daysActive)], ['Avg / day', `$ ${int(avgDay)}`], ['Peak day', `$ ${int(peak.totalCost)}`], ['Top model', prettyModel(topModelId)]]
     .map(([l, v], i) => row(cols[3], 98 + i * 25, l, v, 816)).join('');
@@ -272,19 +359,25 @@ const files = [
   [`${DIR}/ai-usage-combo.svg`, buildCombo()],
 ];
 
-const treeItems = files.map(([path, content]) => ({ path, mode: '100644', type: 'blob', content }));
-const tree = await j(await api(`repos/${REPO}/git/trees`, {
-  method: 'POST',
-  body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree: treeItems }),
-}));
-const commit = await j(await api(`repos/${REPO}/git/commits`, {
-  method: 'POST',
-  body: JSON.stringify({
-    message: `Update AI usage cards: ${fmtTok(totals.totalTokens)} tokens, $${int(usd)}`,
-    tree: tree.sha,
-    parents: [ref.object.sha],
-  }),
-}));
-await j(await api(`repos/${REPO}/git/refs/heads/main`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha }) }));
+if (DRY_RUN) {
+  mkdirSync('./out', { recursive: true });
+  for (const [path, content] of files) writeFileSync(`./out/${path.split('/').pop()}`, content);
+  console.log(`[dry-run] [${new Date().toISOString()}] ${snapshots.length} device(s), 5 cards + snapshot written to ./out/: ${fmtTok(headlineTotals.totalTokens)} tokens | $${int(usd)} | ${tools.map(([n, c]) => `${n} $${fmtCost(c)}`).join(' | ')}`);
+} else {
+  const treeItems = files.map(([path, content]) => ({ path, mode: '100644', type: 'blob', content }));
+  const tree = await j(await api(`repos/${REPO}/git/trees`, {
+    method: 'POST',
+    body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree: treeItems }),
+  }));
+  const commit = await j(await api(`repos/${REPO}/git/commits`, {
+    method: 'POST',
+    body: JSON.stringify({
+      message: `Update AI usage cards: ${fmtTok(headlineTotals.totalTokens)} tokens, $${int(usd)}`,
+      tree: tree.sha,
+      parents: [ref.object.sha],
+    }),
+  }));
+  await j(await api(`repos/${REPO}/git/refs/heads/main`, { method: 'PATCH', body: JSON.stringify({ sha: commit.sha }) }));
 
-console.log(`[${new Date().toISOString()}] ${snapshots.length} device(s), 5 cards updated @ ${commit.sha.slice(0, 7)}: ${fmtTok(totals.totalTokens)} tokens | $${int(usd)} | ${tools.map(([n, c]) => `${n} $${fmtCost(c)}`).join(' | ')}`);
+  console.log(`[${new Date().toISOString()}] ${snapshots.length} device(s), 5 cards updated @ ${commit.sha.slice(0, 7)}: ${fmtTok(headlineTotals.totalTokens)} tokens | $${int(usd)} | ${tools.map(([n, c]) => `${n} $${fmtCost(c)}`).join(' | ')}`);
+}

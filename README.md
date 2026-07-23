@@ -55,10 +55,10 @@ One run generates all four — embed whichever you like:
 ```
 ccusage (each device) ──► cards/devices/<device>.json ──► merged SVG ──► profile README
         ▲                         ▲                                  ▲
-   local CLI logs          overwritten per run             all devices combined
+   local CLI logs           high-water merged              all devices combined
 ```
 
-A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each run recomputes everything from your local logs, fetches fresh FX rates, and commits the regenerated SVG.
+A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each run recomputes everything from your local logs, fetches fresh FX rates, merges the result into that device's ledger, and commits the regenerated SVG.
 
 ## Setup
 
@@ -79,6 +79,8 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
    USAGE_CARD_REPO=YOURNAME/YOURNAME USAGE_CARD_DEVICE=macbook-work node usage-card.mjs
    # [2026-07-16T...] 1 device(s), 5 cards updated @ ab12cd3: 12.6B tokens | $13,190 | Claude Code $13,190 | Codex $0.04
    ```
+
+   Add `--dry-run` to skip the GitHub commit and write the 5 SVGs plus the merged snapshot JSON to `./out/` instead — handy for checking numbers before they go live.
 
 4. **Embed in your profile README** (any of the four variants)
 
@@ -108,11 +110,35 @@ A scheduler (Task Scheduler / cron / launchd) runs the script once a day. Each r
 
 ## Multiple computers
 
-Repeat the clone, test, and scheduling steps on each computer with a unique `USAGE_CARD_DEVICE`, such as `macbook-work`, `macbook-home`, or `desktop-windows`. Each run replaces that device's snapshot instead of adding to it, then rebuilds the cards from every device snapshot, so scheduled reruns do not duplicate usage.
+Repeat the clone, test, and scheduling steps on each computer with a unique `USAGE_CARD_DEVICE`, such as `macbook-work`, `macbook-home`, or `desktop-windows`. Each run merges into that device's own snapshot (never another device's), then rebuilds the cards from every device snapshot, so scheduled reruns do not duplicate usage.
 
 Use a different schedule minute on each computer (for example 09:37, 09:42, 09:47) so two devices do not update the same Git branch simultaneously.
 
 Do not sync or copy Claude Code, Codex, or other AI CLI log directories between computers. `ccusage` exposes daily totals rather than cross-device session IDs, so copied logs cannot be deduplicated reliably.
+
+## Retention-proof ledger
+
+Claude Code (and other CLIs) periodically prune old session logs, so a naive re-run of `ccusage` can report *fewer* tokens than yesterday — and a card that just overwrites its snapshot every run would report a shrinking ALL-TIME total.
+
+Each device's snapshot is instead a **daily high-water ledger**: every run merges today's `ccusage` read into the stored snapshot date by date, keeping the max of old and new for each day. Dates that already fell out of your local logs stay in the ledger forever; today's fresh numbers just get added on top. The ALL-TIME total is the sum of that merged daily history, so it only ever grows.
+
+Snapshots written by older versions of this script (`version: 1`, no daily breakdown) are upgraded automatically the first time you run the new script — no manual migration step needed.
+
+If you've already lost usage to log pruning *before* switching to the ledger version, you can seed a one-time `baseline` correction by committing it directly into `cards/devices/<device>.json`:
+
+```json
+{
+  "version": 2,
+  "device": "desktop-main",
+  "totals": { "totalTokens": 0, "inputTokens": 0, "outputTokens": 0, "cacheCreationTokens": 0, "cacheReadTokens": 0, "totalCost": 0 },
+  "daily": [],
+  "toolDaily": {},
+  "toolLegacy": {},
+  "baseline": { "totalTokens": 300000000, "totalCost": 389, "note": "pre-ledger retention loss" }
+}
+```
+
+`baseline` is only ever added to the ALL-TIME total, the COST block, and the commit message — TOKEN MIX, cache-hit %, ACTIVITY, and the grass heatmap all stay derived from the real daily history, since a baseline has no per-day or per-model breakdown to draw them from. The script never writes `baseline` itself; once seeded, it's carried forward untouched on every merge.
 
 ## Customization
 
@@ -135,7 +161,7 @@ Do not sync or copy Claude Code, Codex, or other AI CLI log directories between 
 3. 프로필 README에 `<img width="100%" src="https://raw.githubusercontent.com/아이디/아이디/main/cards/ai-usage-full.svg" />` 삽입 (4종 중 원하는 파일명으로)
 4. 같은 `USAGE_CARD_REPO`, `USAGE_CARD_DEVICE` 환경변수를 포함해 작업 스케줄러, launchd 또는 cron으로 매일 실행 등록
 
-각 컴퓨터는 자신의 누적 스냅샷만 덮어쓰므로 재실행으로 사용량이 중복되지 않고, 카드는 모든 컴퓨터의 최신 스냅샷을 합산합니다. AI CLI 로그 폴더 자체를 컴퓨터 사이에 복사하거나 동기화하면 동일 세션을 판별할 수 없으므로 지원하지 않습니다.
+각 컴퓨터는 자신의 스냅샷에 일자별 고수위(high-water) 병합만 적용하므로 재실행으로 사용량이 중복되지 않고, 로그가 정리돼도 누적치가 줄어들지 않습니다. 카드는 모든 컴퓨터의 최신 스냅샷을 합산합니다. AI CLI 로그 폴더 자체를 컴퓨터 사이에 복사하거나 동기화하면 동일 세션을 판별할 수 없으므로 지원하지 않습니다.
 
 전제 조건은 Node 18+, `gh auth login` 완료된 GitHub CLI뿐입니다.
 
